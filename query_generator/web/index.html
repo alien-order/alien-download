@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>쿼리 생성기</title>
+<script type="text/javascript" src="/eel.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-primary: #0f1117; --bg-secondary: #181a24; --bg-tertiary: #1e2030;
+    --bg-card: #232636; --border: #2a2d42; --border-hover: #3d4166;
+    --text-primary: #e4e6f0; --text-secondary: #8b8fa8; --text-muted: #5c6080;
+    --accent: #6c5ce7; --accent-light: #a29bfe; --accent-glow: rgba(108, 92, 231, 0.25);
+    --success: #00cec9; --danger: #ff6b6b; --radius: 10px; --radius-sm: 6px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg-primary); color: var(--text-primary); height: 100vh; overflow: hidden; user-select: none; }
+  .app { height: 100vh; display: flex; flex-direction: column; animation: fadeIn 0.4s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .header { padding: 14px 20px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); -webkit-app-region: drag; }
+  .header-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent-light)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 10px var(--accent-glow); flex-shrink: 0; }
+  .header h1 { font-size: 14px; font-weight: 700; letter-spacing: -0.3px; }
+  .steps { display: flex; padding: 12px 20px; gap: 4px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
+  .step { flex: 1; text-align: center; padding: 8px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; color: var(--text-muted); position: relative; transition: all 0.3s; }
+  .step.active { color: var(--accent-light); background: rgba(108, 92, 231, 0.1); }
+  .step.done { color: var(--success); }
+  .step-num { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; font-size: 11px; margin-right: 6px; background: var(--bg-tertiary); border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; }
+  .step.active .step-num { background: var(--accent); border-color: var(--accent); color: white; }
+  .step.done .step-num { background: var(--success); border-color: var(--success); color: white; }
+  .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+  .file-select-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px; }
+  .drop-zone { width: 100%; max-width: 400px; padding: 48px 32px; border: 2px dashed var(--border); border-radius: 16px; text-align: center; cursor: pointer; transition: all 0.3s; background: var(--bg-tertiary); }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(108, 92, 231, 0.05); transform: scale(1.02); }
+  .drop-zone.has-file { border-color: var(--success); border-style: solid; background: rgba(0, 206, 201, 0.05); }
+  .drop-icon { font-size: 40px; margin-bottom: 12px; }
+  .drop-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+  .drop-hint { font-size: 12px; color: var(--text-muted); }
+  .file-name-display { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--success); margin-top: 8px; }
+  .main-section { flex: 1; display: flex; padding: 20px; gap: 20px; overflow: hidden; }
+  .config-panel { width: 280px; display: flex; flex-direction: column; gap: 16px; flex-shrink: 0; }
+  .template-panel, .result-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .mapping-group { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .mapping-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  select, input, textarea { width: 100%; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8fa8'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+  textarea { resize: none; flex-grow: 1; }
+  .bottom-bar { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--bg-secondary); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .btn { padding: 9px 18px; border: none; border-radius: var(--radius-sm); font-family: 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), #7c6cf0); color: white; box-shadow: 0 2px 8px var(--accent-glow); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px var(--accent-glow); }
+  .btn-secondary { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--border-hover); color: var(--text-primary); }
+  .spacer { flex: 1; }
+  .status-bar { padding: 6px 20px; background: var(--bg-primary); border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+  .dedupe-status { min-height: 14px; font-size: 11px; color: var(--text-secondary); margin-top: 5px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-icon">⚡</div>
+    <h1>쿼리 생성기</h1>
+  </div>
+  <div class="steps">
+    <div class="step active" id="step1"><span class="step-num">1</span>엑셀 선택</div>
+    <div class="step" id="step2"><span class="step-num">2</span>쿼리 생성</div>
+  </div>
+
+  <div class="content">
+    <div class="panel active" id="panel1">
+      <div class="file-select-area">
+        <div class="drop-zone" id="dropZone" onclick="selectExcel()">
+          <div class="drop-icon" id="dropIcon">📂</div>
+          <div class="drop-text" id="dropText">클릭하거나 엑셀 파일을 여기로 드래그하세요</div>
+          <div class="drop-hint">.xlsx, .xls, .xlsm 지원</div>
+          <div class="file-name-display" id="fileNameDisplay"></div>
+          <div class="drop-hint" id="fileStatusMessage" style="color: var(--danger); margin-top: 10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel2">
+      <div class="main-section">
+        <div class="config-panel">
+          <div class="mapping-group">
+            <div class="mapping-label">IN절에 넣을 컬럼 선택</div>
+            <select id="columnSelect"></select>
+            <div id="dedupeStatus" class="dedupe-status"></div>
+          </div>
+          <div class="mapping-group">
+            <div class="mapping-label">배치 사이즈</div>
+            <input type="number" id="batchSize" value="1000" min="1">
+          </div>
+        </div>
+        <div class="template-panel">
+            <div class="mapping-label">쿼리 템플릿</div>
+            <textarea id="queryTemplate">SELECT * FROM table WHERE id IN ({VALUES})</textarea>
+        </div>
+        <div class="result-panel">
+          <div class="mapping-label">생성된 쿼리</div>
+          <textarea id="resultQuery" readonly></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <button class="btn btn-secondary" id="btnBack" onclick="prevStep()" style="display:none;">← 이전</button>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="btnGenerate" onclick="generateQueries()" style="display:none;">⚡ 쿼리 생성</button>
+    <button class="btn btn-secondary" id="btnCopy" onclick="copyGeneratedQuery()" style="display:none;">복사</button>
+    <button class="btn btn-primary" id="btnNext" onclick="nextStep()" disabled>다음 →</button>
+  </div>
+
+  <div class="status-bar">
+    <div id="statusLeft">준비됨</div>
+    <div id="statusRight"></div>
+  </div>
+</div>
+
+<script>
+  let currentStep = 1;
+  let excelFilePath = '';
+  let sheetNames = [];
+
+  // --- 페이지 제어 ---
+  function setStep(n) {
+    currentStep = n;
+    document.querySelectorAll('.step').forEach((el, i) => {
+      el.className = 'step' + (i + 1 === n ? ' active' : (i + 1 < n ? ' done' : ''));
+    });
+    document.querySelectorAll('.panel').forEach((el, i) => {
+      el.className = 'panel' + (i + 1 === n ? ' active' : '');
+    });
+    const isStep2 = n === 2;
+    document.getElementById('btnBack').style.display = isStep2 ? '' : 'none';
+    document.getElementById('btnNext').style.display = !isStep2 ? '' : 'none';
+    document.getElementById('btnGenerate').style.display = isStep2 ? '' : 'none';
+    document.getElementById('btnCopy').style.display = isStep2 ? '' : 'none';
+    if (isStep2) {
+      document.getElementById('resultQuery').value = '';
+      showMessage("쿼리 설정을 완료해주세요.", 'info');
+    }
+  }
+
+  function nextStep() {
+    if (currentStep === 1 && excelFilePath) setStep(2);
+  }
+
+  function prevStep() {
+    if (currentStep === 2) {
+        excelFilePath = '';
+        sheetNames = [];
+        document.getElementById('btnNext').disabled = true;
+        document.getElementById('dropZone').classList.remove('has-file');
+        document.getElementById('dropIcon').textContent = '📂';
+        document.getElementById('dropText').textContent = '클릭하거나 엑셀 파일을 여기로 드래그하세요';
+        document.getElementById('fileNameDisplay').textContent = '';
+        document.getElementById('fileStatusMessage').textContent = '';
+        document.getElementById('statusRight').textContent = '';
+        document.getElementById('dedupeStatus').textContent = '';
+        setStep(1);
+    }
+  }
+
+  function showMessage(msg, type = 'info') {
+    const statusLeft = document.getElementById('statusLeft');
+    statusLeft.textContent = msg;
+    statusLeft.style.color = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--text-secondary)';
+  }
+
+  // --- 파일 처리 ---
+  async function selectExcel() {
+    showMessage("파일 선택창 여는중...", 'info');
+    const result = await eel.select_excel_file()();
+    const fileName = result && result.file_path ? result.file_path.split(/[/\\]/).pop() : '';
+    handleFileInfoResult(result, fileName);
+  }
+  
+  (function initDragDrop() {
+    const zone = document.getElementById('dropZone');
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.xlsm'))) {
+        showMessage("파일 처리중...", 'info');
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = reader.result.split(',')[1];
+          const result = await eel.handle_dropped_file(base64, file.name)();
+          handleFileInfoResult(result, file.name);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        handleFileInfoResult({success: false, error: '엑셀 파일(.xlsx, .xls, .xlsm)만 지원합니다.'});
+      }
+    });
+  })();
+  
+  function handleFileInfoResult(result, fileName = '') {
+    const fileStatusMessage = document.getElementById('fileStatusMessage');
+    fileStatusMessage.textContent = '';
+
+    if (!result || !result.success) {
+      const errorMsg = result ? result.error : '알 수 없는 오류가 발생했습니다.';
+      fileStatusMessage.textContent = '오류: ' + errorMsg;
+      showMessage('엑셀 로드 실패', 'error');
+      document.getElementById('btnNext').disabled = true;
+      return;
+    }
+    
+    excelFilePath = result.file_path;
+    sheetNames = result.sheet_names;
+    document.getElementById('dropZone').classList.add('has-file');
+    document.getElementById('dropIcon').textContent = '✅';
+    document.getElementById('dropText').textContent = '파일이 선택되었습니다';
+    document.getElementById('fileNameDisplay').textContent = fileName;
+    document.getElementById('btnNext').disabled = false;
+    document.getElementById('statusRight').textContent = `${fileName} 로드됨`;
+    showMessage('엑셀 로드 성공', 'success');
+    
+    populateColumnSelect(result.headers);
+    updateDedupeStatus(); // 파일 로드 후 즉시 상태 업데이트
+  }
+
+  // --- UI 업데이트 ---
+  function populateColumnSelect(headers) {
+    const select = document.getElementById('columnSelect');
+    select.innerHTML = '';
+    if(headers && headers.length > 0) {
+      headers.forEach((h, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${String.fromCharCode(65 + i)}열: ${h}`;
+        select.appendChild(opt);
+      });
+      select.value = 0;
+    }
+  }
+
+  document.getElementById('columnSelect').addEventListener('change', () => updateDedupeStatus());
+
+  async function updateDedupeStatus() {
+    const colIndex = parseInt(document.getElementById('columnSelect').value);
+    const statusEl = document.getElementById('dedupeStatus');
+    
+    if (!excelFilePath || sheetNames.length === 0 || isNaN(colIndex)) {
+        statusEl.textContent = '';
+        return;
+    }
+    
+    statusEl.textContent = '개수 세는 중...';
+    const result = await eel.get_column_stats(excelFilePath, sheetNames[0], colIndex)();
+    if (result.success) {
+        statusEl.textContent = `총 ${result.original_count}개에서 중복제거 후 ${result.unique_count}개`;
+    } else {
+        statusEl.textContent = '개수 계산 실패';
+    }
+  }
+
+  // --- 쿼리 생성 ---
+  async function generateQueries() {
+    const colIndex = parseInt(document.getElementById('columnSelect').value);
+    const queryTemplate = document.getElementById('queryTemplate').value;
+    const batchSize = parseInt(document.getElementById('batchSize').value);
+    const resultArea = document.getElementById('resultQuery');
+    
+    if (!excelFilePath) { showMessage("먼저 엑셀 파일을 선택해주세요.", 'error'); return; }
+    if (sheetNames.length === 0) { showMessage("유효한 시트가 없습니다.", 'error'); return; }
+    if (isNaN(colIndex) || colIndex < 0) { showMessage("컬럼을 선택해주세요.", 'error'); return; }
+    if (!queryTemplate.includes('{VALUES}')) { showMessage("쿼리 템플릿에 {VALUES}를 포함해주세요.", 'error'); return; }
+    if (isNaN(batchSize) || batchSize < 1) { showMessage("유효한 배치 사이즈를 입력해주세요 (1 이상).", 'error'); return; }
+    
+    showMessage("쿼리 생성 중...", 'info');
+    resultArea.value = "생성 중...";
+    document.getElementById('btnGenerate').disabled = true;
+    document.getElementById('btnCopy').disabled = true;
+
+    const result = await eel.generate_queries(excelFilePath, sheetNames[0], colIndex, queryTemplate, batchSize)();
+    
+    document.getElementById('btnGenerate').disabled = false;
+    document.getElementById('btnCopy').disabled = false;
+
+    if (result.success) {
+      resultArea.value = result.query;
+      showMessage("쿼리 생성 완료", 'success');
+      document.getElementById('dedupeStatus').textContent = `(최종) 총 ${result.original_count}개에서 중복제거 후 ${result.unique_count}개`;
+    } else {
+      resultArea.value = `에러: ${result.error}`;
+      showMessage("에러 발생: " + result.error, 'error');
+    }
+  }
+
+  function copyGeneratedQuery() {
+    const resultArea = document.getElementById('resultQuery');
+    if (!resultArea.value || resultArea.value.startsWith('에러:')) {
+      showMessage('복사할 내용이 없습니다.', 'error');
+      return;
+    }
+    navigator.clipboard.writeText(resultArea.value).then(() => {
+        showMessage('쿼리가 클립보드에 복사되었습니다!', 'success');
+    }, () => {
+        showMessage('클립보드 복사에 실패했습니다. (http 환경에서는 동작하지 않을 수 있습니다)', 'error');
+    });
+  }
+</script>
+</body>
+</html>
