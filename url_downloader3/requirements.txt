@@ -1,0 +1,5 @@
+eel
+pandas
+openpyxl
+requests
+pyinstaller

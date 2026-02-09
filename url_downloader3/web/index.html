@@ -1,0 +1,830 @@
+<!--
+=============================================================================
+index.html - URL 다운로더 v3 화면 (프론트엔드)
+=============================================================================
+
+[v3 특징]
+  Python(requests)이 다운로드하되 브라우저 쿠키를 자동 추출하여 사용.
+  비상용으로 쿠키를 수동 입력할 수도 있음.
+  .do 같은 세션 필요 URL도 다운로드 가능.
+=============================================================================
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>URL 다운로더 v3</title>
+<script type="text/javascript" src="/eel.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-primary: #0f1117;
+    --bg-secondary: #181a24;
+    --bg-tertiary: #1e2030;
+    --bg-card: #232636;
+    --border: #2a2d42;
+    --border-hover: #3d4166;
+    --text-primary: #e4e6f0;
+    --text-secondary: #8b8fa8;
+    --text-muted: #5c6080;
+    --accent: #6c5ce7;
+    --accent-light: #a29bfe;
+    --accent-glow: rgba(108, 92, 231, 0.25);
+    --success: #00cec9;
+    --success-glow: rgba(0, 206, 201, 0.2);
+    --warning: #fdcb6e;
+    --danger: #ff6b6b;
+    --danger-glow: rgba(255, 107, 107, 0.2);
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(108, 92, 231, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(0, 206, 201, 0.04) 0%, transparent 50%);
+  }
+
+  .app { height: 100vh; display: flex; flex-direction: column; animation: fadeIn 0.4s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .header {
+    padding: 14px 20px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border); background: var(--bg-secondary);
+  }
+  .header-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; box-shadow: 0 2px 10px var(--accent-glow); flex-shrink: 0;
+  }
+  .header h1 { font-size: 14px; font-weight: 700; letter-spacing: -0.3px; }
+  .header .version {
+    font-size: 10px; color: var(--text-muted); background: var(--bg-tertiary);
+    padding: 2px 8px; border-radius: 20px; margin-left: auto;
+  }
+
+  .steps {
+    display: flex; padding: 12px 20px; gap: 4px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  }
+  .step {
+    flex: 1; text-align: center; padding: 8px; border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 500; color: var(--text-muted); transition: all 0.3s;
+  }
+  .step.active { color: var(--accent-light); background: rgba(108, 92, 231, 0.1); }
+  .step.done { color: var(--success); }
+  .step-num {
+    display: inline-flex; width: 20px; height: 20px; border-radius: 50%;
+    align-items: center; justify-content: center; font-size: 11px; margin-right: 6px;
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .step.active .step-num { background: var(--accent); border-color: var(--accent); color: white; }
+  .step.done .step-num { background: var(--success); border-color: var(--success); color: white; }
+
+  .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  .file-select-area {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; padding: 40px;
+  }
+  .drop-zone {
+    width: 100%; max-width: 400px; padding: 48px 32px;
+    border: 2px dashed var(--border); border-radius: 16px;
+    text-align: center; cursor: pointer; transition: all 0.3s; background: var(--bg-tertiary);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent); background: rgba(108, 92, 231, 0.05); transform: scale(1.02);
+  }
+  .drop-zone.has-file {
+    border-color: var(--success); border-style: solid; background: rgba(0, 206, 201, 0.05);
+  }
+  .drop-icon { font-size: 40px; margin-bottom: 12px; }
+  .drop-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+  .drop-hint { font-size: 12px; color: var(--text-muted); }
+  .file-name-display {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    color: var(--success); margin-top: 8px;
+  }
+
+  .mapping-section {
+    padding: 20px; display: flex; flex-direction: column;
+    gap: 12px; overflow-y: auto;
+  }
+  .mapping-group {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+  .mapping-label {
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .mapping-label .icon { font-size: 14px; }
+
+  select {
+    width: 100%; padding: 10px 14px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-primary); font-family: 'Noto Sans KR', sans-serif;
+    font-size: 13px; outline: none; cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8fa8'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+    transition: border-color 0.2s;
+  }
+  select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+  .folder-select { display: flex; gap: 8px; }
+  .folder-path {
+    flex: 1; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 14px;
+    color: var(--text-primary); font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; outline: none;
+  }
+
+  /* ── 쿠키 설정 영역 ── */
+  .cookie-section {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+
+  .cookie-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .cookie-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; padding: 3px 10px;
+    border-radius: 20px; background: var(--bg-card);
+  }
+  .cookie-status.loaded { color: var(--success); border: 1px solid var(--success); }
+  .cookie-status.empty { color: var(--text-muted); border: 1px solid var(--border); }
+
+  .cookie-textarea {
+    width: 100%; height: 60px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 12px; color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    outline: none; resize: vertical;
+  }
+  .cookie-textarea:focus { border-color: var(--accent); }
+  .cookie-textarea::placeholder { color: var(--text-muted); }
+
+  .cookie-msg {
+    font-size: 11px; margin-top: 6px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .cookie-msg.success { color: var(--success); }
+  .cookie-msg.error { color: var(--danger); }
+
+  .preview-table-wrap {
+    margin-top: 8px; max-height: 120px; overflow-y: auto;
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+  }
+  .preview-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .preview-table th {
+    background: var(--bg-card); padding: 6px 10px; text-align: left;
+    color: var(--text-muted); font-weight: 500; position: sticky; top: 0;
+  }
+  .preview-table td {
+    padding: 5px 10px; border-top: 1px solid rgba(42, 45, 66, 0.5);
+    color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;
+    max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .download-section {
+    flex: 1; display: flex; flex-direction: column;
+    padding: 20px; gap: 12px; overflow: hidden;
+  }
+  .download-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat-card {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 12px; text-align: center;
+  }
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px; font-weight: 700; color: var(--accent-light);
+  }
+  .stat-value.success { color: var(--success); }
+  .stat-value.error { color: var(--danger); }
+  .stat-value.skip { color: var(--warning); }
+  .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  .progress-section {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
+  .progress-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+  }
+  .progress-label {
+    font-size: 12px; color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%;
+  }
+  .progress-percent {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 600; color: var(--success);
+  }
+  .progress-bar-bg { height: 6px; background: var(--bg-primary); border-radius: 10px; overflow: hidden; }
+  .progress-bar-fill {
+    height: 100%; border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent), var(--success));
+    width: 0%; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); position: relative;
+  }
+  .progress-bar-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    animation: shimmer 2s infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  .log-area {
+    flex: 1; background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px; overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    line-height: 1.6; min-height: 100px;
+  }
+  .log-area::-webkit-scrollbar { width: 4px; }
+  .log-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .log-line { color: var(--text-muted); }
+  .log-line.success { color: var(--success); }
+  .log-line.error { color: var(--danger); }
+  .log-line.skip { color: var(--warning); }
+  .log-line.info { color: var(--accent-light); }
+
+  .bottom-bar {
+    padding: 14px 20px; border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .btn {
+    padding: 9px 18px; border: none; border-radius: var(--radius-sm);
+    font-family: 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #7c6cf0);
+    color: white; box-shadow: 0 2px 8px var(--accent-glow);
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px var(--accent-glow); }
+  .btn-secondary {
+    background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);
+  }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--border-hover); color: var(--text-primary); }
+  .btn-success {
+    background: linear-gradient(135deg, #00b894, var(--success));
+    color: white; box-shadow: 0 2px 8px var(--success-glow);
+  }
+  .btn-success:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px var(--success-glow); }
+  .btn-danger { background: var(--danger); color: white; box-shadow: 0 2px 8px var(--danger-glow); }
+  .btn-sm { padding: 7px 14px; font-size: 12px; }
+  .btn-xs { padding: 5px 10px; font-size: 11px; }
+  .spacer { flex: 1; }
+
+  .status-bar {
+    padding: 6px 20px; background: var(--bg-primary); border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);
+  }
+  .pulse {
+    display: inline-block; width: 6px; height: 6px; background: var(--success);
+    border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <div class="header-icon">⬇</div>
+    <h1>URL 다운로더</h1>
+    <span class="version">v3.0 - Cookie</span>
+  </div>
+
+  <div class="steps">
+    <div class="step active" id="step1"><span class="step-num">1</span>엑셀 선택</div>
+    <div class="step" id="step2"><span class="step-num">2</span>컬럼/쿠키 설정</div>
+    <div class="step" id="step3"><span class="step-num">3</span>다운로드</div>
+  </div>
+
+  <div class="content">
+
+    <!-- Panel 1: 엑셀 파일 선택 -->
+    <div class="panel active" id="panel1">
+      <div class="file-select-area">
+        <div class="drop-zone" id="dropZone" onclick="selectExcel()">
+          <div class="drop-icon" id="dropIcon">📂</div>
+          <div class="drop-text" id="dropText">클릭하거나 파일을 여기로 드래그하세요</div>
+          <div class="drop-hint">.xlsx, .xls, .xlsm 지원</div>
+          <div class="file-name-display" id="fileNameDisplay"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: 컬럼 매핑 + 쿠키 설정 -->
+    <div class="panel" id="panel2">
+      <div class="mapping-section">
+
+        <div class="mapping-group">
+          <div class="mapping-label"><span class="icon">📝</span> 파일명 컬럼</div>
+          <select id="filenameCol"></select>
+        </div>
+
+        <div class="mapping-group">
+          <div class="mapping-label"><span class="icon">🔗</span> URL 컬럼</div>
+          <select id="urlCol"></select>
+        </div>
+
+        <div class="mapping-group">
+          <div class="mapping-label"><span class="icon">📂</span> 하위 폴더 컬럼 (선택사항)</div>
+          <select id="folderCol"></select>
+        </div>
+
+        <div class="mapping-group">
+          <div class="mapping-label"><span class="icon">⚡</span> 동시 다운로드 수</div>
+          <select id="concurrentCount">
+            <option value="1">1개</option>
+            <option value="2">2개</option>
+            <option value="3">3개</option>
+            <option value="4" selected>4개</option>
+            <option value="5">5개</option>
+            <option value="6">6개</option>
+            <option value="7">7개</option>
+            <option value="8">8개</option>
+          </select>
+        </div>
+
+        <div class="mapping-group">
+          <div class="mapping-label"><span class="icon">📁</span> 저장 폴더</div>
+          <div class="folder-select">
+            <input class="folder-path" id="folderPath" readonly placeholder="폴더를 선택하세요">
+            <button class="btn btn-secondary btn-sm" onclick="selectFolder()">찾아보기</button>
+          </div>
+        </div>
+
+        <!-- 쿠키 설정 -->
+        <div class="cookie-section">
+          <div class="cookie-header">
+            <div class="mapping-label" style="margin-bottom:0;"><span class="icon">🍪</span> 쿠키 (로그인 필요 시)</div>
+            <span class="cookie-status empty" id="cookieStatus">쿠키 없음</span>
+          </div>
+
+          <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; line-height:1.7;">
+            F12 → Network → 아무 요청 클릭 → Headers → <b style="color:var(--warning);">Cookie:</b> 값 복사 → 붙여넣기
+          </div>
+          <textarea class="cookie-textarea" id="cookieInput" style="height:60px;"
+            placeholder="JSESSIONID=abc123; userId=test; token=xyz"></textarea>
+          <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-success btn-xs" onclick="setManualCookies()">쿠키 적용</button>
+            <button class="btn btn-secondary btn-xs" onclick="clearCookies()">초기화</button>
+            <span class="cookie-msg" id="cookieMsg"></span>
+          </div>
+        </div>
+
+        <!-- 미리보기 -->
+        <div class="mapping-group">
+          <div class="mapping-label"><span class="icon">👁</span> 미리보기 (상위 5개)</div>
+          <div class="preview-table-wrap">
+            <table class="preview-table" id="previewTable">
+              <thead><tr><th>폴더</th><th>파일명</th><th>URL</th></tr></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Panel 3: 다운로드 진행 -->
+    <div class="panel" id="panel3">
+      <div class="download-section">
+        <div class="download-stats">
+          <div class="stat-card">
+            <div class="stat-value" id="statTotal">0</div>
+            <div class="stat-label">전체</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value success" id="statDone">0</div>
+            <div class="stat-label">완료</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value error" id="statError">0</div>
+            <div class="stat-label">에러</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value skip" id="statSkip">0</div>
+            <div class="stat-label">건너뜀</div>
+          </div>
+        </div>
+
+        <div class="progress-section">
+          <div class="progress-header">
+            <span class="progress-label" id="progressLabel">준비 중...</span>
+            <span class="progress-percent" id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressFill"></div>
+          </div>
+        </div>
+
+        <div class="log-area" id="logArea"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="bottom-bar">
+    <button class="btn btn-secondary" id="btnBack" onclick="prevStep()" style="display:none;">← 이전</button>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="btnNext" onclick="nextStep()" disabled>다음 →</button>
+    <button class="btn btn-success" id="btnDownload" onclick="startDownload()" style="display:none;">⬇ 다운로드 시작</button>
+    <button class="btn btn-secondary" id="btnPause" onclick="togglePause()" style="display:none;">⏸ 일시정지</button>
+    <button class="btn btn-danger" id="btnCancel" onclick="cancelDownload()" style="display:none;">✕ 취소</button>
+    <button class="btn btn-primary" id="btnRestart" onclick="goToStart()" style="display:none;">↩ 처음으로</button>
+    <button class="btn btn-secondary" id="btnExit" onclick="exitApp()" style="display:none;">✕ 종료</button>
+  </div>
+
+  <div class="status-bar">
+    <div><span class="pulse"></span>준비됨</div>
+    <div id="statusRight"></div>
+  </div>
+</div>
+
+<script>
+  // ==========================================================================
+  // 상태 변수
+  // ==========================================================================
+
+  let currentStep = 1;
+  let excelPath = '';
+  let excelData = null;
+  let sheetData = null;
+  let downloadItems = [];
+  let stats = { total: 0, done: 0, error: 0, skip: 0 };
+  let isPaused = false;
+
+
+  // ==========================================================================
+  // 단계 이동
+  // ==========================================================================
+
+  function setStep(n) {
+    currentStep = n;
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById(`step${i}`).className = 'step' + (i === n ? ' active' : (i < n ? ' done' : ''));
+      document.getElementById(`panel${i}`).className = 'panel' + (i === n ? ' active' : '');
+    }
+
+    document.getElementById('btnBack').style.display = n > 1 && n < 3 ? '' : 'none';
+    document.getElementById('btnNext').style.display = n < 3 ? '' : 'none';
+    document.getElementById('btnDownload').style.display = n === 3 ? '' : 'none';
+    document.getElementById('btnCancel').style.display = 'none';
+    document.getElementById('btnPause').style.display = 'none';
+
+    if (n === 2) updatePreview();
+    if (n === 3) prepareDownload();
+  }
+
+  function nextStep() {
+    if (currentStep === 1 && !excelPath) return;
+    if (currentStep === 2 && !validateMapping()) return;
+    setStep(currentStep + 1);
+  }
+
+  function prevStep() {
+    if (currentStep > 1) setStep(currentStep - 1);
+  }
+
+
+  // ==========================================================================
+  // Panel 1: 엑셀 파일 선택
+  // ==========================================================================
+
+  async function selectExcel() {
+    const path = await eel.select_excel_file()();
+    if (!path) return;
+    const fileName = path.split(/[/\\]/).pop();
+    const result = await eel.read_excel(path)();
+    handleExcelResult(result, fileName);
+  }
+
+  (function initDragDrop() {
+    const zone = document.getElementById('dropZone');
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => { zone.classList.remove('drag-over'); });
+    zone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['xlsx', 'xls', 'xlsm'].includes(ext)) {
+        alert('엑셀 파일만 지원합니다 (.xlsx, .xls, .xlsm)');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        const result = await eel.read_excel_from_data(base64, file.name)();
+        handleExcelResult(result, file.name);
+      };
+      reader.readAsDataURL(file);
+    });
+  })();
+
+  function handleExcelResult(result, fileName) {
+    if (!result.success) { alert('엑셀 읽기 실패: ' + result.error); return; }
+    excelPath = fileName;
+    excelData = result;
+    const firstSheet = result.sheet_names[0];
+    sheetData = result.sheets[firstSheet];
+
+    document.getElementById('dropZone').classList.add('has-file');
+    document.getElementById('dropIcon').textContent = '✅';
+    document.getElementById('dropText').textContent = '파일이 선택되었습니다';
+    document.getElementById('fileNameDisplay').textContent = fileName;
+    document.getElementById('btnNext').disabled = false;
+    document.getElementById('statusRight').textContent = `${fileName} 로드됨`;
+    populateColumnSelects();
+  }
+
+
+  // ==========================================================================
+  // Panel 2: 컬럼 매핑 + 쿠키
+  // ==========================================================================
+
+  function populateColumnSelects() {
+    if (!sheetData) return;
+    const headers = sheetData.headers;
+    const fnSel = document.getElementById('filenameCol');
+    const urlSel = document.getElementById('urlCol');
+    const folderSel = document.getElementById('folderCol');
+    fnSel.innerHTML = '';
+    urlSel.innerHTML = '';
+    folderSel.innerHTML = '';
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '-1';
+    noneOpt.textContent = '사용 안 함 (전부 같은 폴더에 저장)';
+    folderSel.appendChild(noneOpt);
+
+    headers.forEach((h, i) => {
+      [fnSel, urlSel, folderSel].forEach(sel => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${String.fromCharCode(65 + i)}열: ${h}`;
+        sel.appendChild(opt);
+      });
+    });
+
+    const data = sheetData.data;
+    for (let col = 0; col < headers.length; col++) {
+      const sample = data.slice(0, 5).map(row => row[col] || '');
+      if (sample.some(v => v.startsWith('http'))) {
+        urlSel.value = col;
+        fnSel.value = col === 0 ? 1 : 0;
+        break;
+      }
+    }
+  }
+
+  function updatePreview() {
+    if (!sheetData) return;
+    const fnIdx = parseInt(document.getElementById('filenameCol').value);
+    const urlIdx = parseInt(document.getElementById('urlCol').value);
+    const folderIdx = parseInt(document.getElementById('folderCol').value);
+    const body = document.getElementById('previewBody');
+    body.innerHTML = '';
+    sheetData.data.slice(0, 5).forEach(row => {
+      const folderVal = folderIdx >= 0 ? (row[folderIdx] || '-') : '-';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td title="${folderVal}">${folderVal}</td>
+        <td title="${row[fnIdx] || ''}">${row[fnIdx] || '-'}</td>
+        <td title="${row[urlIdx] || ''}">${row[urlIdx] || '-'}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  document.getElementById('filenameCol')?.addEventListener('change', updatePreview);
+  document.getElementById('urlCol')?.addEventListener('change', updatePreview);
+  document.getElementById('folderCol')?.addEventListener('change', updatePreview);
+
+  function validateMapping() {
+    const fnIdx = document.getElementById('filenameCol').value;
+    const urlIdx = document.getElementById('urlCol').value;
+    const folder = document.getElementById('folderPath').value;
+    if (fnIdx === urlIdx) { alert('파일명 컬럼과 URL 컬럼이 같습니다.'); return false; }
+    if (!folder) { alert('저장 폴더를 선택해주세요.'); return false; }
+    return true;
+  }
+
+  async function selectFolder() {
+    const path = await eel.select_folder()();
+    if (path) document.getElementById('folderPath').value = path;
+  }
+
+  async function setManualCookies() {
+    const cookieStr = document.getElementById('cookieInput').value.trim();
+    const msgEl = document.getElementById('cookieMsg');
+
+    if (!cookieStr) {
+      msgEl.textContent = '쿠키를 입력해주세요.';
+      msgEl.className = 'cookie-msg error';
+      return;
+    }
+
+    const result = await eel.set_manual_cookies(cookieStr)();
+    msgEl.textContent = result.message;
+    msgEl.className = 'cookie-msg ' + (result.success ? 'success' : 'error');
+    updateCookieStatus();
+  }
+
+  async function clearCookies() {
+    const result = await eel.clear_cookies()();
+    document.getElementById('cookieMsg').textContent = result.message;
+    document.getElementById('cookieMsg').className = 'cookie-msg';
+    document.getElementById('cookieInput').value = '';
+    updateCookieStatus();
+  }
+
+  async function updateCookieStatus() {
+    const count = await eel.get_cookie_count()();
+    const el = document.getElementById('cookieStatus');
+    if (count > 0) {
+      el.textContent = `쿠키 ${count}개`;
+      el.className = 'cookie-status loaded';
+    } else {
+      el.textContent = '쿠키 없음';
+      el.className = 'cookie-status empty';
+    }
+  }
+
+
+  // ==========================================================================
+  // Panel 3: 다운로드
+  // ==========================================================================
+
+  function prepareDownload() {
+    const fnIdx = parseInt(document.getElementById('filenameCol').value);
+    const urlIdx = parseInt(document.getElementById('urlCol').value);
+    const folderIdx = parseInt(document.getElementById('folderCol').value);
+
+    downloadItems = sheetData.data
+      .map((row, idx) => ({
+        rowIndex: idx,
+        filename: (row[fnIdx] || '').trim(),
+        url: (row[urlIdx] || '').trim(),
+        folder: folderIdx >= 0 ? (row[folderIdx] || '').trim() : ''
+      }));
+
+    stats = { total: downloadItems.length, done: 0, error: 0, skip: 0 };
+    updateStats();
+
+    document.getElementById('progressLabel').textContent = `${downloadItems.length}개 파일 준비됨`;
+    document.getElementById('progressPercent').textContent = '0%';
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('logArea').innerHTML = '';
+
+    addLog(`📋 총 ${downloadItems.length}개 파일 감지됨`, 'info');
+    addLog(`📁 저장 경로: ${document.getElementById('folderPath').value}`, 'info');
+  }
+
+  let pollTimer = null;
+
+  async function startDownload() {
+    const folder = document.getElementById('folderPath').value;
+    stats = { total: downloadItems.length, done: 0, error: 0, skip: 0 };
+    updateStats();
+
+    document.getElementById('btnDownload').style.display = 'none';
+    document.getElementById('btnPause').style.display = '';
+    document.getElementById('btnCancel').style.display = '';
+    document.getElementById('btnBack').style.display = 'none';
+    isPaused = false;
+
+    addLog('🚀 다운로드 시작...', 'info');
+
+    const workers = parseInt(document.getElementById('concurrentCount').value);
+    await eel.start_download(downloadItems, folder, workers)();
+
+    pollTimer = setInterval(pollProgress, 200);
+  }
+
+  async function pollProgress() {
+    try {
+      const updates = await eel.get_progress()();
+      if (!updates || updates.length === 0) return;
+
+      for (const data of updates) {
+        const { current, total, status, filename, message } = data;
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        document.getElementById('progressFill').style.width = pct + '%';
+        document.getElementById('progressPercent').textContent = pct + '%';
+        document.getElementById('progressLabel').textContent = message;
+
+        if (status === 'done') { stats.done++; addLog(`✅ ${filename}`, 'success'); }
+        else if (status === 'error') { stats.error++; addLog(`❌ ${message}`, 'error'); }
+        else if (status === 'skip') { stats.skip++; addLog(`⏭ ${message}`, 'skip'); }
+        else if (status === 'cancelled') { addLog(`⛔ ${message}`, 'error'); downloadFinished(); }
+        else if (status === 'complete') { addLog(`\n🎉 ${message}`, 'info'); downloadFinished(); }
+
+        updateStats();
+      }
+    } catch (e) { /* 폴링 에러 무시 */ }
+  }
+
+  async function cancelDownload() {
+    await eel.cancel_download()();
+    addLog('⛔ 취소 요청됨...', 'error');
+  }
+
+  async function togglePause() {
+    const btn = document.getElementById('btnPause');
+    if (!isPaused) {
+      await eel.pause_download()();
+      isPaused = true;
+      btn.textContent = '▶ 계속';
+      btn.className = 'btn btn-success';
+      addLog('⏸ 일시정지됨', 'info');
+    } else {
+      await eel.resume_download()();
+      isPaused = false;
+      btn.textContent = '⏸ 일시정지';
+      btn.className = 'btn btn-secondary';
+      addLog('▶ 다운로드 재개', 'info');
+    }
+  }
+
+
+  // ==========================================================================
+  // 보조 함수
+  // ==========================================================================
+
+  function downloadFinished() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    document.getElementById('btnPause').style.display = 'none';
+    document.getElementById('btnCancel').style.display = 'none';
+    document.getElementById('btnDownload').style.display = 'none';
+    document.getElementById('btnRestart').style.display = '';
+    document.getElementById('btnExit').style.display = '';
+  }
+
+  function goToStart() {
+    excelPath = '';
+    excelData = null;
+    sheetData = null;
+    downloadItems = [];
+    stats = { total: 0, done: 0, error: 0, skip: 0 };
+
+    document.getElementById('dropZone').classList.remove('has-file');
+    document.getElementById('dropIcon').textContent = '📂';
+    document.getElementById('dropText').textContent = '클릭하거나 파일을 여기로 드래그하세요';
+    document.getElementById('fileNameDisplay').textContent = '';
+    document.getElementById('btnNext').disabled = true;
+    document.getElementById('statusRight').textContent = '';
+    document.getElementById('btnRestart').style.display = 'none';
+    document.getElementById('btnExit').style.display = 'none';
+
+    setStep(1);
+  }
+
+  function exitApp() { window.close(); }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent = stats.total;
+    document.getElementById('statDone').textContent = stats.done;
+    document.getElementById('statError').textContent = stats.error;
+    document.getElementById('statSkip').textContent = stats.skip;
+  }
+
+  function addLog(text, type = '') {
+    const area = document.getElementById('logArea');
+    const line = document.createElement('div');
+    line.className = 'log-line ' + type;
+    line.textContent = text;
+    area.appendChild(line);
+    area.scrollTop = area.scrollHeight;
+  }
+</script>
+
+</body>
+</html>
