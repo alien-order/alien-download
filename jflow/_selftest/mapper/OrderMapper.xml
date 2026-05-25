@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.demo.mapper.OrderMapper">
+
+    <sql id="orderCols">
+        order_id, cust_id, amount, status
+    </sql>
+
+    <select id="selectAll" resultType="map">
+        SELECT <include refid="orderCols"/>
+        FROM T_ORDER o
+        JOIN T_CUSTOMER c ON c.cust_id = o.cust_id
+        WHERE o.status = #{status}
+    </select>
+
+    <insert id="insertOrder" parameterType="map">
+        INSERT INTO T_ORDER (cust_id, amount, status)
+        VALUES (#{custId}, #{amount}, #{status})
+    </insert>
+</mapper>
